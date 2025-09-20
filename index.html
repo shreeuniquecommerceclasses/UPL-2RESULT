@@ -2,21 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>UPL Round 2 Result</title>
+  <title>UPL Round 2 Result - Debug Friendly</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background:#f3f4f6; padding:20px; }
-    .box { max-width:650px; margin:auto; background:#fff; padding:20px; border-radius:10px; box-shadow:0 3px 8px rgba(0,0,0,0.2); }
-    h1 { text-align:center; margin-bottom:5px; }
-    h2 { text-align:center; margin-top:0; }
-    input, button { width:100%; padding:10px; margin:8px 0; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
-    button { background:#2563eb; color:white; border:none; cursor:pointer; }
-    button:hover { background:#1d4ed8; }
-    table { width:100%; border-collapse:collapse; margin-top:15px; }
-    th,td { border:1px solid #ccc; padding:8px; text-align:center; }
-    th { background:#f9fafb; }
-    #printBtn { background:#10b981; display:none; } 
-    #printBtn:hover { background:#059669; }
+    body{font-family:Arial, sans-serif;background:#f3f4f6;padding:18px}
+    .box{max-width:720px;margin:auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,0.12)}
+    h1{text-align:center;margin:4px 0} h2{text-align:center;margin:2px 0 12px}
+    input,button{width:100%;padding:10px;margin:8px 0;border-radius:6px;border:1px solid #ccc;box-sizing:border-box}
+    button{background:#2563eb;color:#fff;border:none;cursor:pointer}
+    button:hover{background:#1d4ed8}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #ccc;padding:8px;text-align:center}
+    th{background:#fafafa}
+    .info{font-size:13px;color:#333;margin-top:6px}
+    .error{color:#b91c1c;font-weight:700}
+    .success{color:green}
+    .small{font-size:13px;color:#555}
+    #printBtn{background:#10b981}
   </style>
 </head>
 <body>
@@ -24,137 +26,165 @@
     <h1>UNIQUE PREMIERE LEAGUE (UPL)</h1>
     <h2>Round 2 Result</h2>
 
-    <!-- Download Sample CSV -->
     <button onclick="downloadSample()">⬇️ Download Sample CSV</button>
-
-    <!-- Upload CSV -->
     <input type="file" id="csvFile" accept=".csv">
-    <p id="uploadMsg" style="color:green;"></p>
+    <p id="uploadMsg" class="small"></p>
 
-    <!-- Seat Input -->
-    <input type="text" id="seatInput" placeholder="Enter Seat Number">
+    <div class="info">
+      <strong>Detected headers:</strong> <span id="detectedHeaders">-</span><br>
+      <strong>Rows loaded:</strong> <span id="rowsLoaded">0</span><br>
+      <strong>Sample seats:</strong> <span id="sampleSeats">-</span>
+    </div>
+
+    <input type="text" id="seatInput" placeholder="Enter Seat Number (e.g. 101)">
     <button onclick="getResult()">Get Result</button>
 
-    <!-- Result Area -->
     <div id="resultArea"></div>
-    <button id="printBtn" onclick="printResult()">🖨️ Print / Save PDF</button>
+    <button id="printBtn" style="display:none" onclick="printResult()">🖨️ Print / Save PDF</button>
   </div>
 
-  <script>
-    let students = [];
+<script>
+  let students = [];
+  let headerMap = {}; // maps normalized field -> original header
 
-    // Sample CSV Download
-    function downloadSample() {
-      const sample = 
+  function normalizeKey(s){
+    return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  }
+
+  function downloadSample(){
+    const sample =
 `SeatNumber,Name,OCM,BK,Eco,MathsSP
 101,Rohit Sharma,35,30,28,36
 102,Priya Verma,38,32,29,35
 103,Aman Patel,40,37,36,39`;
-      const blob = new Blob([sample], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "sample_results.csv";
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }
+    const blob = new Blob([sample], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'sample_results.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
 
-    // CSV Upload
-    document.getElementById("csvFile").addEventListener("change", function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function(res) {
-          // Normalise keys
-          students = res.data.map(row => {
-            return {
-              SeatNumber: String(row.SeatNumber || "").trim(),
-              Name: String(row.Name || "").trim(),
-              OCM: String(row.OCM || "0").trim(),
-              BK: String(row.BK || "0").trim(),
-              Eco: String(row.Eco || "0").trim(),
-              MathsSP: String(row.MathsSP || "0").trim()
-            };
-          });
-          document.getElementById("uploadMsg").innerText = "✅ CSV uploaded successfully!";
-        },
-        error: function() {
-          document.getElementById("uploadMsg").innerText = "❌ Error reading CSV!";
+  document.getElementById('csvFile').addEventListener('change', function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(res){
+        // detect headers
+        const headers = (res.meta && res.meta.fields) ? res.meta.fields.slice() : (res.data[0] ? Object.keys(res.data[0]) : []);
+        document.getElementById('detectedHeaders').innerText = headers.join(', ');
+        document.getElementById('rowsLoaded').innerText = res.data.length;
+
+        // build normalized header list
+        const normList = headers.map(h => ({orig:h, norm: normalizeKey(h)}));
+
+        // helper to find header by tokens
+        function findByTokens(tokens){
+          tokens = tokens.map(t => t.toLowerCase());
+          const found = normList.find(x => tokens.some(t => x.norm.includes(t)));
+          return found ? found.orig : null;
         }
-      });
+
+        // map required columns (try flexible names)
+        const seatH = findByTokens(['seat','roll','rollno','seatnumber','id']);
+        const nameH = findByTokens(['name']);
+        const ocmH  = findByTokens(['ocm']);
+        const bkH   = findByTokens(['bk']);
+        const ecoH  = findByTokens(['eco','econom']);
+        const mathH = findByTokens(['math','sp']);
+
+        headerMap = {seatH,nameH,ocmH,bkH,ecoH,mathH};
+
+        // if seat or name not found - show error and show suggestions
+        if(!seatH || !nameH){
+          document.getElementById('uploadMsg').innerHTML = `<span class="error">Required column missing. Need at least SeatNumber and Name columns.<br>Detected: ${headers.join(', ')}<br>Rename headers or use sample CSV.</span>`;
+          students = []; updateSamples(); return;
+        }
+
+        // build students normalized rows
+        students = res.data.map(row => {
+          return {
+            SeatNumber: String(row[seatH]||'').trim(),
+            Name: String(row[nameH]||'').trim(),
+            OCM: String(row[ocmH]||'0').trim(),
+            BK:  String(row[bkH]||'0').trim(),
+            Eco: String(row[ecoH]||'0').trim(),
+            MathsSP: String(row[mathH]||'0').trim()
+          };
+        });
+
+        document.getElementById('uploadMsg').innerHTML = `<span class="success">✅ CSV uploaded. ${students.length} records loaded. (Delimiter: ${res.meta.delimiter || 'auto'})</span>`;
+        updateSamples();
+        console.log('Loaded students:', students.slice(0,10));
+      },
+      error: function(err){
+        document.getElementById('uploadMsg').innerHTML = `<span class="error">Error reading CSV: ${err && err.message ? err.message : 'unknown'}</span>`;
+      }
     });
+  });
 
-    // Search Result
-    function getResult() {
-      const seat = document.getElementById("seatInput").value.trim();
-      const resultDiv = document.getElementById("resultArea");
-      const printBtn = document.getElementById("printBtn");
+  function updateSamples(){
+    const seats = students.slice(0,20).map(s => s.SeatNumber).join(', ');
+    document.getElementById('sampleSeats').innerText = seats || '-';
+  }
 
-      if (!seat) {
-        resultDiv.innerHTML = `<p style="color:red;">⚠️ Please enter Seat Number</p>`;
-        printBtn.style.display = "none";
-        return;
-      }
+  function normalizeSeatForCompare(v){
+    return String(v||'').trim().replace(/\s+/g,'').toLowerCase();
+  }
 
-      const student = students.find(s => s.SeatNumber === seat);
+  function getResult(){
+    const input = document.getElementById('seatInput').value;
+    const resultDiv = document.getElementById('resultArea');
+    const printBtn = document.getElementById('printBtn');
+    resultDiv.innerHTML = ''; printBtn.style.display = 'none';
 
-      if (student) {
-        const marks = [
-          parseInt(student.OCM)||0,
-          parseInt(student.BK)||0,
-          parseInt(student.Eco)||0,
-          parseInt(student.MathsSP)||0
-        ];
-        const total = marks.reduce((a,b)=>a+b,0);
-        const percentage = ((total/160)*100).toFixed(2);
-
-        let rows = `
-          <tr><th>Seat Number</th><td>${student.SeatNumber}</td></tr>
-          <tr><th>Name</th><td>${student.Name}</td></tr>
-          <tr><th>OCM</th><td>${student.OCM}</td></tr>
-          <tr><th>BK</th><td>${student.BK}</td></tr>
-          <tr><th>Eco</th><td>${student.Eco}</td></tr>
-          <tr><th>Maths/SP</th><td>${student.MathsSP}</td></tr>
-          <tr><th>Total</th><td>${total} / 160</td></tr>
-          <tr><th>Percentage</th><td>${percentage}%</td></tr>
-        `;
-
-        resultDiv.innerHTML = `<table>${rows}</table>`;
-        printBtn.style.display = "block";
-      } else {
-        resultDiv.innerHTML = `<p style="color:red;">❌ Seat Number ${seat} not found!</p>`;
-        printBtn.style.display = "none";
-      }
+    if(!input){
+      resultDiv.innerHTML = `<p class="error">⚠️ Please enter Seat Number</p>`; return;
+    }
+    if(!students.length){
+      resultDiv.innerHTML = `<p class="error">⚠️ No CSV loaded. Upload your CSV first (use Download Sample to get format).</p>`; return;
     }
 
-    // Print / Save PDF
-    function printResult() {
-      const printContents = document.querySelector("#resultArea").innerHTML;
-      const win = window.open('', '', 'width=800,height=600');
-      win.document.write(`
-        <html>
-          <head>
-            <title>UPL Round 2 Result</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding:20px; }
-              h1,h2 { text-align:center; }
-              table { width:100%; border-collapse:collapse; margin-top:15px; }
-              th,td { border:1px solid #000; padding:8px; text-align:center; }
-              th { background:#f0f0f0; }
-            </style>
-          </head>
-          <body>
-            <h1>UNIQUE PREMIERE LEAGUE (UPL)</h1>
-            <h2>Round 2 Result</h2>
-            ${printContents}
-          </body>
-        </html>
-      `);
-      win.document.close();
-      win.print();
+    const found = students.find(s => normalizeSeatForCompare(s.SeatNumber) === normalizeSeatForCompare(input));
+    if(!found){
+      // helpful message: list some seats to check formatting
+      const sample = students.slice(0,10).map(x => x.SeatNumber).join(', ');
+      resultDiv.innerHTML = `<p class="error">❌ Seat "${input}" not found. Check formatting. Sample loaded seats: ${sample}</p>`;
+      return;
     }
-  </script>
+
+    const m = [
+      parseInt(found.OCM)||0,
+      parseInt(found.BK)||0,
+      parseInt(found.Eco)||0,
+      parseInt(found.MathsSP)||0
+    ];
+    const total = m.reduce((a,b)=>a+b,0);
+    const percentage = ((total / (4 * 40)) * 100).toFixed(2);
+
+    const rows = `
+      <tr><th>Seat Number</th><td>${found.SeatNumber}</td></tr>
+      <tr><th>Name</th><td>${found.Name}</td></tr>
+      <tr><th>OCM</th><td>${found.OCM}</td></tr>
+      <tr><th>BK</th><td>${found.BK}</td></tr>
+      <tr><th>Eco</th><td>${found.Eco}</td></tr>
+      <tr><th>Maths/SP</th><td>${found.MathsSP}</td></tr>
+      <tr><th>Total</th><td>${total} / 160</td></tr>
+      <tr><th>Percentage</th><td>${percentage}%</td></tr>
+    `;
+    resultDiv.innerHTML = `<table>${rows}</table>`;
+    printBtn.style.display = 'block';
+  }
+
+  function printResult(){
+    const printContents = document.querySelector('#resultArea').innerHTML;
+    const win = window.open('','_blank','width=800,height=600');
+    win.document.write(`<html><head><title>UPL Round 2 Result</title>
+      <style>body{font-family:Arial;padding:20px}h1,h2{text-align:center}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:8px;text-align:center}</style>
+      </head><body><h1>UNIQUE PREMIERE LEAGUE (UPL)</h1><h2>Round 2 Result</h2>${printContents}</body></html>`);
+    win.document.close(); win.print();
+  }
+</script>
 </body>
 </html>
