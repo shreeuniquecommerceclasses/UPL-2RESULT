@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UPL Round 2 Result</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f3f4f6; padding:20px; }
+    .box { max-width:650px; margin:auto; background:#fff; padding:20px; border-radius:10px; box-shadow:0 3px 8px rgba(0,0,0,0.2); }
+    h1 { text-align:center; margin-bottom:5px; }
+    h2 { text-align:center; margin-top:0; }
+    input, button { width:100%; padding:10px; margin:8px 0; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+    button { background:#2563eb; color:white; border:none; cursor:pointer; }
+    button:hover { background:#1d4ed8; }
+    table { width:100%; border-collapse:collapse; margin-top:15px; }
+    th,td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#f9fafb; }
+    #printBtn { background:#10b981; display:none; } 
+    #printBtn:hover { background:#059669; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>UNIQUE PREMIERE LEAGUE (UPL)</h1>
+    <h2>Round 2 Result</h2>
+
+    <!-- Download Sample CSV -->
+    <button onclick="downloadSample()">⬇️ Download Sample CSV</button>
+
+    <!-- Upload CSV -->
+    <input type="file" id="csvFile" accept=".csv">
+    <p id="uploadMsg" style="color:green;"></p>
+
+    <!-- Seat Input -->
+    <input type="text" id="seatInput" placeholder="Enter Seat Number">
+    <button onclick="getResult()">Get Result</button>
+
+    <!-- Result Area -->
+    <div id="resultArea"></div>
+    <button id="printBtn" onclick="printResult()">🖨️ Print / Save PDF</button>
+  </div>
+
+  <script>
+    let students = [];
+
+    // Sample CSV Download
+    function downloadSample() {
+      const sample = 
+`SeatNumber,Name,OCM,BK,Eco,MathsSP
+101,Rohit Sharma,35,30,28,36
+102,Priya Verma,38,32,29,35
+103,Aman Patel,40,37,36,39`;
+      const blob = new Blob([sample], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sample_results.csv";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+
+    // CSV Upload
+    document.getElementById("csvFile").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(res) {
+          // Normalise keys
+          students = res.data.map(row => {
+            return {
+              SeatNumber: String(row.SeatNumber || "").trim(),
+              Name: String(row.Name || "").trim(),
+              OCM: String(row.OCM || "0").trim(),
+              BK: String(row.BK || "0").trim(),
+              Eco: String(row.Eco || "0").trim(),
+              MathsSP: String(row.MathsSP || "0").trim()
+            };
+          });
+          document.getElementById("uploadMsg").innerText = "✅ CSV uploaded successfully!";
+        },
+        error: function() {
+          document.getElementById("uploadMsg").innerText = "❌ Error reading CSV!";
+        }
+      });
+    });
+
+    // Search Result
+    function getResult() {
+      const seat = document.getElementById("seatInput").value.trim();
+      const resultDiv = document.getElementById("resultArea");
+      const printBtn = document.getElementById("printBtn");
+
+      if (!seat) {
+        resultDiv.innerHTML = `<p style="color:red;">⚠️ Please enter Seat Number</p>`;
+        printBtn.style.display = "none";
+        return;
+      }
+
+      const student = students.find(s => s.SeatNumber === seat);
+
+      if (student) {
+        const marks = [
+          parseInt(student.OCM)||0,
+          parseInt(student.BK)||0,
+          parseInt(student.Eco)||0,
+          parseInt(student.MathsSP)||0
+        ];
+        const total = marks.reduce((a,b)=>a+b,0);
+        const percentage = ((total/160)*100).toFixed(2);
+
+        let rows = `
+          <tr><th>Seat Number</th><td>${student.SeatNumber}</td></tr>
+          <tr><th>Name</th><td>${student.Name}</td></tr>
+          <tr><th>OCM</th><td>${student.OCM}</td></tr>
+          <tr><th>BK</th><td>${student.BK}</td></tr>
+          <tr><th>Eco</th><td>${student.Eco}</td></tr>
+          <tr><th>Maths/SP</th><td>${student.MathsSP}</td></tr>
+          <tr><th>Total</th><td>${total} / 160</td></tr>
+          <tr><th>Percentage</th><td>${percentage}%</td></tr>
+        `;
+
+        resultDiv.innerHTML = `<table>${rows}</table>`;
+        printBtn.style.display = "block";
+      } else {
+        resultDiv.innerHTML = `<p style="color:red;">❌ Seat Number ${seat} not found!</p>`;
+        printBtn.style.display = "none";
+      }
+    }
+
+    // Print / Save PDF
+    function printResult() {
+      const printContents = document.querySelector("#resultArea").innerHTML;
+      const win = window.open('', '', 'width=800,height=600');
+      win.document.write(`
+        <html>
+          <head>
+            <title>UPL Round 2 Result</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding:20px; }
+              h1,h2 { text-align:center; }
+              table { width:100%; border-collapse:collapse; margin-top:15px; }
+              th,td { border:1px solid #000; padding:8px; text-align:center; }
+              th { background:#f0f0f0; }
+            </style>
+          </head>
+          <body>
+            <h1>UNIQUE PREMIERE LEAGUE (UPL)</h1>
+            <h2>Round 2 Result</h2>
+            ${printContents}
+          </body>
+        </html>
+      `);
+      win.document.close();
+      win.print();
+    }
+  </script>
+</body>
+</html>
